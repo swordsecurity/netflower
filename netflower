@@ -26,8 +26,8 @@ def recv_pkts(header,payload):
 
 def main(interface):
 
-    max_bytes = 1024
-    promiscuous = False
+    max_bytes = 1000000
+    promiscuous = True
     read_timeout = 100 # in milliseconds
     pc = pcapy.open_live(interface, max_bytes, promiscuous, read_timeout)
  
