@@ -4,8 +4,14 @@ import dpkt
 import pcapy
 import socket
 import sys
+import datetime
+import pprint
+
+data = {}
+scope = ''
 
 def recv_pkts(header,payload):
+    global data,scope
     eth=dpkt.ethernet.Ethernet(str(payload))
 
     # Check whether IP packets: to consider only IP packets 
@@ -13,16 +19,49 @@ def recv_pkts(header,payload):
             return 
             # Skip if it is not an IP packet
 
-    ip=eth.data
+    ip = eth.data
     proto = 'tcp'
-    if ip.p==dpkt.ip.IP_PROTO_UDP: # Check for UDP packets
+    if ip.p == dpkt.ip.IP_PROTO_UDP: # Check for UDP packets
            proto = 'udp'
-
 
     src = socket.inet_ntoa(ip.src)
     dst = socket.inet_ntoa(ip.dst)
-     
-    print("proto: %s, src: %s, dst: %s, length: %d" % (proto,src,dst,len(ip.data)))
+    date = datetime.datetime.today().strftime('%Y-%m-%d')
+    length = len(ip.data)
+    
+    if scope in src or scope in dst:
+        src_dst_format = "%s::%s::%s" % (src,dst,date)
+        dst_src_format = "%s::%s::%s" % (dst,src,date)
+
+        if scope in src:
+            find_data = data.get(src_dst_format)
+            if find_data is None:
+                find_data = [0,[0,0]]
+                data[src_dst_format] = find_data
+
+            incoming = find_data[1][0] + length
+            outgoing = find_data[1][1]
+            count = find_data[0] + length
+            data[src_dst_format] = [count,[incoming,outgoing]]
+        else:
+            find_data = data.get(dst_src_format)
+            if find_data is None:
+                find_data = [0,[0,0]]
+                data[dst_src_format] = find_data
+
+            incoming = find_data[1][0]
+            outgoing = find_data[1][1] + length 
+            count = find_data[0] + length
+            data[dst_src_format] = [count,[incoming,outgoing]]
+            
+
+
+
+        
+    print(chr(27) + "[2J")
+    pp = pprint.PrettyPrinter(indent=4)
+    pp.pprint(data)     
+    #print("proto: %s, src: %s, dst: %s, length: %d" % (proto,src,dst,len(ip.data)))
 
 def main(interface):
 
@@ -35,12 +74,17 @@ def main(interface):
     pc.loop(packet_limit, recv_pkts) # capture packets 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print "usage: python netflower.py [interface]"
+    if len(sys.argv) < 2:
+        print "usage: sudo ./netflower.py [interface]"
+        print "usage: sudo ./netflower.py [interface] [scope]"
+        print ""
+        print "example: sudo ./netflower.py wlp2s0 192.168."
         exit(1)
-    
     try:
         interface = sys.argv[1]
+        if len(sys.argv) == 3:
+            scope = sys.argv[2]
+
         main(interface)
     except KeyboardInterrupt:
         exit(0)
