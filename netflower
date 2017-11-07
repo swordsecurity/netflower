@@ -5,6 +5,7 @@ import pcapy
 import socket
 import sys
 import datetime
+import json
 import pprint
 
 data = {
@@ -16,12 +17,11 @@ scope = ''
 import threading
 
 def logit():
-    threading.Timer(30.0, printit).start()
+    threading.Timer(30.0, logit).start()
     global data
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.today().strftime('%Y-%m-%d')
-    with open('netflower.%s.log' % today, 'w') as f:
-        print >> f, data['flow']
+    json.dump(data['flow'], open("netflower.%s.txt" % today,'w'))
 
 def printit():
     threading.Timer(5, printit).start()
@@ -31,11 +31,6 @@ def printit():
     print "[ %s - %s ]" % (data['start'], now)
     print ""
     pprint.pprint(data['flow'])
-
-printit()
-logit()
-
-
 
 def recv_pkts(header,payload):
     global data,scope
@@ -82,13 +77,6 @@ def recv_pkts(header,payload):
             data['flow'][dst_src_format] = [count,[incoming,outgoing]]
         data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-
-        
-    #print(chr(27) + "[2J")
-    #pp = pprint.PrettyPrinter(indent=4)
-    #pp.pprint(data)     
-    #print("proto: %s, src: %s, dst: %s, length: %d" % (proto,src,dst,len(ip.data)))
-
 def main(interface):
 
     max_bytes = 1000000
@@ -111,6 +99,8 @@ if __name__ == '__main__':
         if len(sys.argv) == 3:
             scope = sys.argv[2]
 
+        printit()
+        logit()
         main(interface)
     except KeyboardInterrupt:
         exit(0)
