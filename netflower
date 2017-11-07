@@ -8,28 +8,32 @@ import datetime
 import pprint
 
 data = {
-    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S'),
-    'last' : datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S'),
+    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
     'flow' : {}
 }
 scope = ''
 
 import threading
 
-def printit():
-    threading.Timer(5.0, printit).start()
+def logit():
+    threading.Timer(30.0, printit).start()
     global data
-
-    print("\033c")
-    print "start :%s" % data['start']
-    print "last :%s" % data['last']
-    print "flow:"
-    pprint.pprint(data['flow'])
+    now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.today().strftime('%Y-%m-%d')
     with open('netflower.%s.log' % today, 'w') as f:
         print >> f, data['flow']
 
+def printit():
+    threading.Timer(5, printit).start()
+    global data
+    now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+    print("\033c")
+    print "[ %s - %s ]" % (data['start'], now)
+    print ""
+    pprint.pprint(data['flow'])
+
 printit()
+logit()
 
 
 
@@ -76,7 +80,7 @@ def recv_pkts(header,payload):
             outgoing = find_data[1][1] + length 
             count = find_data[0] + length
             data['flow'][dst_src_format] = [count,[incoming,outgoing]]
-        data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S')
+        data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
 
         
