@@ -1,7 +1,7 @@
 import dpkt
 import pcapy
 import socket
-
+import sys
 
 
 def main(interface):
@@ -28,8 +28,12 @@ def main(interface):
         (header,payload)=cap.next()
 
 if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print "usage: python netflower.py [interface]"
+        exit(1)
+    
     try:
-        interface = 'wlp2s0'
+        interface = sys.argv[1]
         main(interface)
     except KeyboardInterrupt:
         pass
