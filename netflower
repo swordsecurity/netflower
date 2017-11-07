@@ -1,0 +1,46 @@
+#!/usr/bin/python2
+
+import dpkt
+import pcapy
+import socket
+import sys
+
+def recv_pkts(header,payload):
+    eth=dpkt.ethernet.Ethernet(str(payload))
+
+    # Check whether IP packets: to consider only IP packets 
+    if eth.type!=dpkt.ethernet.ETH_TYPE_IP:
+            return 
+            # Skip if it is not an IP packet
+
+    ip=eth.data
+    proto = 'tcp'
+    if ip.p==dpkt.ip.IP_PROTO_UDP: # Check for UDP packets
+           proto = 'udp'
+
+
+    src = socket.inet_ntoa(ip.src)
+    dst = socket.inet_ntoa(ip.dst)
+     
+    print("proto: %s, src: %s, dst: %s, length: %d" % (proto,src,dst,len(ip.data)))
+
+def main(interface):
+
+    max_bytes = 1024
+    promiscuous = False
+    read_timeout = 100 # in milliseconds
+    pc = pcapy.open_live(interface, max_bytes, promiscuous, read_timeout)
+ 
+    packet_limit = -1 # infinite
+    pc.loop(packet_limit, recv_pkts) # capture packets 
+
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print "usage: python netflower.py [interface]"
+        exit(1)
+    
+    try:
+        interface = sys.argv[1]
+        main(interface)
+    except KeyboardInterrupt:
+        exit(0)
