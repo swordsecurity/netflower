@@ -7,8 +7,31 @@ import sys
 import datetime
 import pprint
 
-data = {}
+data = {
+    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S'),
+    'last' : datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S'),
+    'flow' : {}
+}
 scope = ''
+
+import threading
+
+def printit():
+    threading.Timer(5.0, printit).start()
+    global data
+
+    print("\033c")
+    print "start :%s" % data['start']
+    print "last :%s" % data['last']
+    print "flow:"
+    pprint.pprint(data['flow'])
+    today = datetime.datetime.today().strftime('%Y-%m-%d')
+    with open('netflower.%s.log' % today, 'w') as f:
+        print >> f, data['flow']
+
+printit()
+
+
 
 def recv_pkts(header,payload):
     global data,scope
@@ -34,7 +57,7 @@ def recv_pkts(header,payload):
         dst_src_format = "%s::%s::%s" % (dst,src,date)
 
         if scope in src:
-            find_data = data.get(src_dst_format)
+            find_data = data['flow'].get(src_dst_format)
             if find_data is None:
                 find_data = [0,[0,0]]
                 data[src_dst_format] = find_data
@@ -42,9 +65,9 @@ def recv_pkts(header,payload):
             incoming = find_data[1][0] + length
             outgoing = find_data[1][1]
             count = find_data[0] + length
-            data[src_dst_format] = [count,[incoming,outgoing]]
+            data['flow'][src_dst_format] = [count,[incoming,outgoing]]
         else:
-            find_data = data.get(dst_src_format)
+            find_data = data['flow'].get(dst_src_format)
             if find_data is None:
                 find_data = [0,[0,0]]
                 data[dst_src_format] = find_data
@@ -52,15 +75,14 @@ def recv_pkts(header,payload):
             incoming = find_data[1][0]
             outgoing = find_data[1][1] + length 
             count = find_data[0] + length
-            data[dst_src_format] = [count,[incoming,outgoing]]
-            
-
+            data['flow'][dst_src_format] = [count,[incoming,outgoing]]
+        data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%I:%S')
 
 
         
-    print(chr(27) + "[2J")
-    pp = pprint.PrettyPrinter(indent=4)
-    pp.pprint(data)     
+    #print(chr(27) + "[2J")
+    #pp = pprint.PrettyPrinter(indent=4)
+    #pp.pprint(data)     
     #print("proto: %s, src: %s, dst: %s, length: %d" % (proto,src,dst,len(ip.data)))
 
 def main(interface):
