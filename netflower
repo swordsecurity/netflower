@@ -7,7 +7,9 @@ import sys
 import datetime
 import json
 import pprint
-
+import logging
+import time
+from logstash_async.handler import AsynchronousLogstashHandler
 data = {
     'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
     'flow' : {}
@@ -19,18 +21,21 @@ import threading
 def logit():
     threading.Timer(30.0, logit).start()
     global data
+    global logger
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.today().strftime('%Y-%m-%d')
-    json.dump(data['flow'], open("netflower.%s.txt" % today,'w'))
+    for key,item in data['flow'].iteritems():
+        logger.info('netflower', extra=item)
+        print(item)
 
 def printit():
     threading.Timer(5, printit).start()
     global data
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-    print("\033c")
-    print "[ %s - %s ]" % (data['start'], now)
-    print ""
-    pprint.pprint(data['flow'])
+    #print("\033c")
+    ##pprint.pprint(data['flow'])
+    #print ""
+    #print "[ %s - %s ]" % (data['start'], now)
 
 def recv_pkts(header,payload):
     global data,scope
@@ -51,33 +56,41 @@ def recv_pkts(header,payload):
     date = datetime.datetime.today().strftime('%Y-%m-%d')
     length = len(ip.data)
     
-    if scope in src or scope in dst:
+    if src.startswith(scope) or dst.startswith(scope):
         src_dst_format = "%s::%s::%s" % (src,dst,date)
         dst_src_format = "%s::%s::%s" % (dst,src,date)
 
         if scope in src:
             find_data = data['flow'].get(src_dst_format)
             if find_data is None:
-                find_data = [0,[0,0]]
-                data[src_dst_format] = find_data
+                find_data = {'t': 0, 'u': 0, 'd':0} #[0,[0,0]]
 
-            incoming = find_data[1][0] + length
-            outgoing = find_data[1][1]
-            count = find_data[0] + length
-            data['flow'][src_dst_format] = [count,[incoming,outgoing]]
+            
+            u = find_data['u'] + length
+            d = find_data['d']
+            t = find_data['t'] + length
+            data['flow'][src_dst_format] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d }
         else:
             find_data = data['flow'].get(dst_src_format)
             if find_data is None:
-                find_data = [0,[0,0]]
-                data[dst_src_format] = find_data
+                find_data = {'t': 0, 'u': 0, 'd':0} #[0,[0,0]]
 
-            incoming = find_data[1][0]
-            outgoing = find_data[1][1] + length 
-            count = find_data[0] + length
-            data['flow'][dst_src_format] = [count,[incoming,outgoing]]
+            u = find_data['u']
+            d = find_data['d'] + length
+            t = find_data['t'] + length
+            data['flow'][dst_src_format] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d }
+
         data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
+logger = None
 def main(interface):
+    global logger
+    logger = logging.getLogger('python-logstash-logger')
+    logger.setLevel(logging.INFO)
+    logger.addHandler(AsynchronousLogstashHandler('localhost', 1337, database_path='logs.db'))
+
+    printit()
+    logit()
 
     max_bytes = 1000000
     promiscuous = True
@@ -99,8 +112,7 @@ if __name__ == '__main__':
         if len(sys.argv) == 3:
             scope = sys.argv[2]
 
-        printit()
-        logit()
         main(interface)
     except KeyboardInterrupt:
         exit(0)
+
