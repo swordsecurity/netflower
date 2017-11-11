@@ -29,7 +29,8 @@ def printit():
     total_t = 0
     total_u = 0
     total_d = 0
-    for key,item in data['flow'].iteritems():
+    dataflow = data['flow']
+    for key,item in dataflow.iteritems():
         total_t += item['t']
         total_u += item['u']
         total_d += item['d']
