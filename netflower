@@ -9,33 +9,41 @@ import json
 import pprint
 import logging
 import time
-from logstash_async.handler import AsynchronousLogstashHandler
-data = {
-    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
-    'flow' : {}
-}
-scope = ''
-
 import threading
+import argparse
 
 def logit():
     threading.Timer(30.0, logit).start()
-    global data
-    global logger
+    global data,logger
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.today().strftime('%Y-%m-%d')
     for key,item in data['flow'].iteritems():
         logger.info('netflower', extra=item)
-        print(item)
+        #print(item)
 
 def printit():
     threading.Timer(5, printit).start()
     global data
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     #print("\033c")
-    ##pprint.pprint(data['flow'])
-    #print ""
-    #print "[ %s - %s ]" % (data['start'], now)
+    total_t = 0
+    total_u = 0
+    total_d = 0
+    for key,item in data['flow'].iteritems():
+        total_t += item['t']
+        total_u += item['u']
+        total_d += item['d']
+        total = float(item['t']) / 1048576 # bytes to megabytes conversion
+        up = float(item['u']) / 1048576
+        down = float(item['d']) / 1048576
+        print "%s : Total: %.2fMb, %.2fMb up, %.2fMb down" % (key,total,up,down)
+        
+    print ""
+    print "Total: %.2fMb, %.2fMb up, %.2fMb down" % (float(total_t)/1048576,float(total_u)/1048576,float(total_d)/1048576)
+    print ""
+    print "[ %s - %s ]" % (data['start'], now)
+    print ""
+    print ""
 
 def recv_pkts(header,payload):
     global data,scope
@@ -57,8 +65,8 @@ def recv_pkts(header,payload):
     length = len(ip.data)
     
     if src.startswith(scope) or dst.startswith(scope):
-        src_dst_format = "%s::%s::%s" % (src,dst,date)
-        dst_src_format = "%s::%s::%s" % (dst,src,date)
+        src_dst_format = "%s>%s:%s" % (src,dst,date)
+        dst_src_format = "%s>%s:%s" % (dst,src,date)
 
         if scope in src:
             find_data = data['flow'].get(src_dst_format)
@@ -69,7 +77,7 @@ def recv_pkts(header,payload):
             u = find_data['u'] + length
             d = find_data['d']
             t = find_data['t'] + length
-            data['flow'][src_dst_format] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d }
+            data['flow'][src_dst_format] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d,'date':date }
         else:
             find_data = data['flow'].get(dst_src_format)
             if find_data is None:
@@ -78,19 +86,22 @@ def recv_pkts(header,payload):
             u = find_data['u']
             d = find_data['d'] + length
             t = find_data['t'] + length
-            data['flow'][dst_src_format] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d }
+            data['flow'][dst_src_format] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d,'date':date }
 
         data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-logger = None
-def main(interface):
-    global logger
-    logger = logging.getLogger('python-logstash-logger')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(AsynchronousLogstashHandler('localhost', 1337, database_path='logs.db'))
+def main(interface,logstash_port,output):
+    if logstash_port is not None:
+        from logstash_async.handler import AsynchronousLogstashHandler
+        global logger
+        logger = logging.getLogger('python-logstash-logger')
+        logger.setLevel(logging.INFO)
+        logger.addHandler(AsynchronousLogstashHandler('localhost', logstash_port, database_path='logs.db'))
 
-    printit()
-    logit()
+        logit()
+
+    if output:
+        printit()
 
     max_bytes = 1000000
     promiscuous = True
@@ -100,19 +111,33 @@ def main(interface):
     packet_limit = -1 # infinite
     pc.loop(packet_limit, recv_pkts) # capture packets 
 
-if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print "usage: sudo ./netflower.py [interface]"
-        print "usage: sudo ./netflower.py [interface] [scope]"
-        print ""
-        print "example: sudo ./netflower.py wlp2s0 192.168."
-        exit(1)
-    try:
-        interface = sys.argv[1]
-        if len(sys.argv) == 3:
-            scope = sys.argv[2]
+# Default data
+data = {
+    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
+    'flow' : {}
+}
+scope = ''
+output = True
+logger = None
+logstash_port = None
 
-        main(interface)
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-i','--interface',required=True,help='Interface to listen on')
+    ap.add_argument('-l','--logstash_port',help='Specify logstash port to send flowdata every 30 seconds')
+    ap.add_argument('-n','--nooutput',help='Do not print data',action='store_true')
+    ap.add_argument('-s','--scope',help='Scope to listen for, for example 192.168 will listen to all packets that use 192.168.x.x as source / destionation IP')
+    args = vars(ap.parse_args())
+    try:
+        interface = args['interface']
+        if args.get('scope') is not None:
+            scope = args['scope']
+            
+        if args.get('logstash_port') is not None:
+            logstash_port = args['logstash_port']
+        if args['nooutput']:
+            output = False
+        main(interface,logstash_port,output)
     except KeyboardInterrupt:
         exit(0)
 
