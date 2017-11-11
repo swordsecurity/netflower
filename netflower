@@ -17,7 +17,8 @@ def logit():
     global data,logger
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     today = datetime.datetime.today().strftime('%Y-%m-%d')
-    for key,item in data['flow'].iteritems():
+    dataflow = data['flow']
+    for key,item in dataflow.iteritems():
         logger.info('netflower', extra=item)
         #print(item)
 
