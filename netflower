@@ -1,146 +1,131 @@
-#!/usr/bin/python2
-
+#!/usr/bin/python3
 import dpkt
 import pcapy
 import socket
 import sys
 import datetime
 import json
-import pprint
+#import pprint
 import logging
 import time
 import threading
 import argparse
 import copy
+from dpkt.udp import UDP
+from logstash_async.handler import AsynchronousLogstashHandler
 
+#import requests
+
+lock = threading.Lock()
+data = {}
+scope = ''
+output = True
+logger = None
+logstash_config = None
+start = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+# For Logstash use
 def logit():
     threading.Timer(30.0, logit).start()
-    global data,logger
-    now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-    today = datetime.datetime.today().strftime('%Y-%m-%d')
-    dataflow = copy.deepcopy(data['flow'])    
-    for key,item in dataflow.iteritems():
-        logger.info('netflower', extra=item)
-        #print(item)
+    global data,test_logger,start
+    with lock:
+        dataflow = copy.deepcopy(data)    
+        data = {}
 
+    print("Sending %d items" % len(dataflow))
+    for key,item in dataflow.items():
+        test_logger.info('netflower', extra=item)
+
+# For CLI use
 def printit():
     threading.Timer(5, printit).start()
-    global data
-    now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-    #print("\033c")
+    global data,start
     total_t = 0
     total_u = 0
     total_d = 0
-    dataflow = copy.deepcopy(data['flow'])    
-    for key,item in dataflow.iteritems():
+    dataflow = copy.deepcopy(data)    
+    for key,item in dataflow.items():
         total_t += item['t']
         total_u += item['u']
         total_d += item['d']
         total = float(item['t']) / 1048576 # bytes to megabytes conversion
         up = float(item['u']) / 1048576
         down = float(item['d']) / 1048576
-        print "%s : Total: %.2fMb, %.2fMb up, %.2fMb down" % (key,total,up,down)
-        
-    print ""
-    print "Total: %.2fMb, %.2fMb up, %.2fMb down" % (float(total_t)/1048576,float(total_u)/1048576,float(total_d)/1048576)
-    print ""
-    print "[ %s - %s ]" % (data['start'], now)
-    print ""
-    print ""
+        print("%s => %s -> %s : Total: %.2fMb, %.2fMb up, %.2fMb down" % (item['p'],item['ip1'],item['ip2'],total,up,down))
+    now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+    print("")
+    print("Total: %.2fMb, %.2fMb up, %.2fMb down" % (float(total_t)/1048576,float(total_u)/1048576,float(total_d)/1048576))
+    print("")
+    print("[ %s - %s ]" % (start, now))
+    print("")
+    print("")
 
 def recv_pkts(header,payload):
     global data,scope
-    eth=dpkt.ethernet.Ethernet(str(payload))
-
-    # Check whether IP packets: to consider only IP packets 
+    eth=dpkt.ethernet.Ethernet(payload)
     if eth.type!=dpkt.ethernet.ETH_TYPE_IP:
-            return 
-            # Skip if it is not an IP packet
+            return # Skip it is not an IP packet
 
     ip = eth.data
-    proto = 'tcp'
-    if ip.p == dpkt.ip.IP_PROTO_UDP: # Check for UDP packets
-           proto = 'udp'
-
+    tcp = ip.data
     src = socket.inet_ntoa(ip.src)
     dst = socket.inet_ntoa(ip.dst)
-    date = datetime.datetime.today().strftime('%Y-%m-%d')
+    proto = "tcp"
+    if type(ip.data) == UDP:
+        proto = "udp"
     length = len(ip.data)
-    
-    if src.startswith(scope) or dst.startswith(scope):
-        src_dst_format = "%s>%s:%s" % (src,dst,date)
-        dst_src_format = "%s>%s:%s" % (dst,src,date)
+    with lock:
+        find_data = data.get(src + ":" + dst + ":" + proto)
+        if find_data is None:
+            find_data = {'t': 0, 'u': 0, 'd':0}
+                
+        u = find_data['u'] + length
+        d = find_data['d']
+        t = find_data['t'] + length
+        data[src + ":" + dst + ":" + proto] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d,'p':proto }
+        find_data = data.get(dst + ":" + src + ":" + proto) 
+        if find_data is None:
+            find_data = {'t': 0, 'u': 0, 'd':0}
+                
+        u = find_data['u'] + length
+        d = find_data['d']
+        t = find_data['t'] + length
+        data[src + ":" + dst + ":" + proto] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d,'p':proto }
 
-        if scope in src:
-            find_data = data['flow'].get(src_dst_format)
-            if find_data is None:
-                find_data = {'t': 0, 'u': 0, 'd':0} #[0,[0,0]]
+def main(interface,logstash_config):
+    if logstash_config is not None:
+        global test_logger
+        test_logger = logging.getLogger('python-logstash-logger')
+        test_logger.setLevel(logging.INFO)
+        test_logger.addHandler(AsynchronousLogstashHandler(logstash_config['host'],logstash_config['port'],database_path=None))
 
-            
-            u = find_data['u'] + length
-            d = find_data['d']
-            t = find_data['t'] + length
-            data['flow'][src_dst_format] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d,'date':date }
-        else:
-            find_data = data['flow'].get(dst_src_format)
-            if find_data is None:
-                find_data = {'t': 0, 'u': 0, 'd':0} #[0,[0,0]]
-
-            u = find_data['u']
-            d = find_data['d'] + length
-            t = find_data['t'] + length
-            data['flow'][dst_src_format] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d,'date':date }
-
-        data['last'] = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-
-def main(interface,logstash_port,output):
-    if logstash_port is not None:
-        from logstash_async.handler import AsynchronousLogstashHandler
-        global logger
-        logger = logging.getLogger('python-logstash-logger')
-        logger.setLevel(logging.INFO)
-        logger.addHandler(AsynchronousLogstashHandler('localhost', logstash_port, database_path='logs.db'))
-
+        test_logger.error('python-logstash-async: test logstash error message.')
         logit()
-
-    if output:
+    else:
         printit()
 
     max_bytes = 1000000
     promiscuous = True
     read_timeout = 100 # in milliseconds
     pc = pcapy.open_live(interface, max_bytes, promiscuous, read_timeout)
- 
     packet_limit = -1 # infinite
     pc.loop(packet_limit, recv_pkts) # capture packets 
-
-# Default data
-data = {
-    'start' : datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'),
-    'flow' : {}
-}
-scope = ''
-output = True
-logger = None
-logstash_port = None
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-i','--interface',required=True,help='Interface to listen on')
-    ap.add_argument('-l','--logstash_port',help='Specify logstash port to send flowdata every 30 seconds')
-    ap.add_argument('-n','--nooutput',help='Do not print data',action='store_true')
-    ap.add_argument('-s','--scope',help='Scope to listen for, for example 192.168 will listen to all packets that use 192.168.x.x as source / destionation IP')
+    ap.add_argument('-l','--logstash_config',help='Logstash configuration host/port in JSON format, example: {"host":"localhost","port":5000}')
     args = vars(ap.parse_args())
     try:
         interface = args['interface']
-        if args.get('scope') is not None:
-            scope = args['scope']
-            
-        if args.get('logstash_port') is not None:
-            logstash_port = args['logstash_port']
-        if args['nooutput']:
-            output = False
-        main(interface,logstash_port,output)
+        if args.get('logstash_config') is not None:
+            logstash_config = json.loads(args['logstash_config'])
+            print(logstash_config)
+            if logstash_config.get("host") is None:
+                raise Exception("Logstash host not specified")
+            if logstash_config.get("port") is None:
+                raise Exception("Logstash port not specified")
+        main(interface,logstash_config)
     except KeyboardInterrupt:
         exit(0)
 
