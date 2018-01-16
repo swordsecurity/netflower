@@ -5,7 +5,6 @@ import socket
 import sys
 import datetime
 import json
-#import pprint
 import logging
 import time
 import threading
@@ -13,9 +12,6 @@ import argparse
 import copy
 from dpkt.udp import UDP
 from logstash_async.handler import AsynchronousLogstashHandler
-
-#import requests
-
 lock = threading.Lock()
 data = {}
 scope = ''
@@ -32,7 +28,7 @@ def logit():
         dataflow = copy.deepcopy(data)    
         data = {}
 
-    print("Sending %d items" % len(dataflow))
+    print("[%s] Sending %d items" % ((datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S'), len(dataflow))))
     for key,item in dataflow.items():
         test_logger.info('netflower', extra=item)
 
@@ -44,14 +40,29 @@ def printit():
     total_u = 0
     total_d = 0
     dataflow = copy.deepcopy(data)    
+    already_listed = {}
     for key,item in dataflow.items():
+        # check if ip combo already listed
+        ips = [item['ip1'],item['ip2']]
+        ips.sort()
+        listed = ':'.join(ips)
+        if listed in already_listed:
+            continue
+
+        already_listed[listed] = 1
+
+        # Parse data
         total_t += item['t']
         total_u += item['u']
         total_d += item['d']
         total = float(item['t']) / 1048576 # bytes to megabytes conversion
         up = float(item['u']) / 1048576
         down = float(item['d']) / 1048576
-        print("%s => %s -> %s : Total: %.2fMb, %.2fMb up, %.2fMb down" % (item['p'],item['ip1'],item['ip2'],total,up,down))
+
+        # Print data for each ip combo
+        print("%s => %s -> %s : Total: %.2fMb, %.2fMb up, %.2fMb down" % (item['p'],ips[0],ips[1],total,up,down))
+
+    # Print generic data
     now  = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
     print("")
     print("Total: %.2fMb, %.2fMb up, %.2fMb down" % (float(total_t)/1048576,float(total_u)/1048576,float(total_d)/1048576))
@@ -87,10 +98,10 @@ def recv_pkts(header,payload):
         if find_data is None:
             find_data = {'t': 0, 'u': 0, 'd':0}
                 
-        u = find_data['u'] + length
-        d = find_data['d']
+        u = find_data['u']
+        d = find_data['d'] + length
         t = find_data['t'] + length
-        data[src + ":" + dst + ":" + proto] = {'ip1':src,'ip2':dst,'t': t, 'u': u, 'd': d,'p':proto }
+        data[dst + ":" + src + ":" + proto] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d,'p':proto }
 
 def main(interface,logstash_config):
     if logstash_config is not None:
@@ -120,7 +131,6 @@ if __name__ == '__main__':
         interface = args['interface']
         if args.get('logstash_config') is not None:
             logstash_config = json.loads(args['logstash_config'])
-            print(logstash_config)
             if logstash_config.get("host") is None:
                 raise Exception("Logstash host not specified")
             if logstash_config.get("port") is None:
