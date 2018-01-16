@@ -1,4 +1,6 @@
 # Netflower: Analyse a network interface and show live bandwidth usage for every IP
+![Demo](/thumbs/netflower.png)
+
 ## Features
 - Analyse bandwidth usage for network interface
 - Split in TCP and UDP
