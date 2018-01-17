@@ -1,5 +1,5 @@
 # Netflower: Analyse a network interface and show live bandwidth usage for every IP
-![Demo](/thumbs/netflower.png)
+![Demo](./docs/screenshots/netflower.png)
 
 ## Features
 - Analyse bandwidth usage for network interface
