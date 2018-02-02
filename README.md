@@ -38,4 +38,4 @@ sudo python3 netflower/netflower.py -i wlp2s0 # display bandwidth usage for wlp2
 ```
 
 # License
-MIT license
+GNU AFFERO GENERAL PUBLIC LICENSE
