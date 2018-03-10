@@ -5,6 +5,7 @@
 - Analyse bandwidth usage for network interface
 - Split in TCP and UDP
 - Send data to logstash (-l)
+- Send data to file (-o)
 
 ## Prerequisites
 To run Netflower, you'll need the following:
@@ -21,7 +22,7 @@ pip3 install -r requirements.txt
 
 ##  Usage
 ```
-usage: netflower.py [-h] -i INTERFACE [-l LOGSTASH_CONFIG]
+usage: netflower.py [-h] -i INTERFACE [-l LOGSTASH_CONFIG] [-o OUTPUT]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -30,6 +31,9 @@ optional arguments:
   -l LOGSTASH_CONFIG, --logstash_config LOGSTASH_CONFIG
                         Logstash configuration host/port in JSON format,
                         example: {"host":"localhost","port":5000}
+  -o OUTPUT, --output OUTPUT
+                        Write total,up,download usage to file
+
 ```
 
 ##  Example
