@@ -19,6 +19,40 @@ output = True
 logger = None
 logstash_config = None
 start = datetime.datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+output = None
+
+# Write to file
+def writeit():
+    threading.Timer(15.0, writeit).start()
+    global data,output
+    with lock:
+        dataflow = copy.deepcopy(data)    
+
+    total_t = 0
+    total_u = 0
+    total_d = 0
+    already_listed = {}
+    for key,item in dataflow.items():
+        # check if ip combo already listed
+        ips = [item['ip1'],item['ip2']]
+        ips.sort()
+        listed = ':'.join(ips)
+        if listed in already_listed:
+            continue
+
+        already_listed[listed] = 1
+
+        # Parse data
+        total_t += item['t']
+        total_u += item['u']
+        total_d += item['d']
+    total_t = float(total_t) / 1048576 #bytes->Mb
+    total_u = float(total_u) / 1048576 #bytes->Mb
+    total_d = float(total_d) / 1048576 #bytes->Mb
+    obj = {"Total": "%.2fMb" % total_t,"Up":"%.2fMb" % total_u,"Down":"%.2fMb" % total_d}
+    with open(output,"w") as f:
+        json.dump(obj,f)
+    print(obj)
 
 # For Logstash use
 def logit():
@@ -35,11 +69,11 @@ def logit():
 # For CLI use
 def printit():
     threading.Timer(5, printit).start()
+    dataflow = copy.deepcopy(data)    
     global data,start
     total_t = 0
     total_u = 0
     total_d = 0
-    dataflow = copy.deepcopy(data)    
     already_listed = {}
     for key,item in dataflow.items():
         # check if ip combo already listed
@@ -104,6 +138,7 @@ def recv_pkts(header,payload):
         data[dst + ":" + src + ":" + proto] = {'ip1':dst,'ip2':src,'t': t, 'u': u, 'd': d,'p':proto }
 
 def main(interface,logstash_config):
+    global output
     if logstash_config is not None:
         global test_logger
         test_logger = logging.getLogger('python-logstash-logger')
@@ -112,6 +147,8 @@ def main(interface,logstash_config):
 
         test_logger.error('python-logstash-async: test logstash error message.')
         logit()
+    elif output is not None:
+        writeit()
     else:
         printit()
 
@@ -126,15 +163,20 @@ if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('-i','--interface',required=True,help='Interface to listen on')
     ap.add_argument('-l','--logstash_config',help='Logstash configuration host/port in JSON format, example: {"host":"localhost","port":5000}')
+    ap.add_argument('-o','--output',help='Write total,up,download usage to file')
     args = vars(ap.parse_args())
     try:
         interface = args['interface']
+        if args.get('output') is not None:
+            output = args['output']
+
         if args.get('logstash_config') is not None:
             logstash_config = json.loads(args['logstash_config'])
             if logstash_config.get("host") is None:
                 raise Exception("Logstash host not specified")
             if logstash_config.get("port") is None:
                 raise Exception("Logstash port not specified")
+
         main(interface,logstash_config)
     except KeyboardInterrupt:
         exit(0)
